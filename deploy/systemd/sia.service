@@ -1,0 +1,23 @@
+# sia-app  30.30.30.2
+# Gunicorn solo en la IP interna. El puerto 8000 debe aceptar tráfico
+# únicamente desde 30.30.30.1.
+#
+#   sudo cp deploy/systemd/sia.service /etc/systemd/system/sia.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sia
+
+[Unit]
+Description=SIA Gunicorn (Django)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=sia
+Group=sia
+WorkingDirectory=/opt/sia/backend
+EnvironmentFile=/etc/sia/sia.env
+ExecStart=/opt/sia/backend/.venv/bin/gunicorn config.wsgi:application --bind 30.30.30.2:8000 --workers 3 --timeout 120
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

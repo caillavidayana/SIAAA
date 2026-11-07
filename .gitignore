@@ -1,0 +1,42 @@
+# Entornos virtuales
+.venv/
+env/
+venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+*.pot
+*.bak
+
+# Dependencias Node.js
+node_modules/
+frontend/node_modules/
+.npm
+package-lock.json.bak
+
+# Compilados de Vite y Frontend
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# Archivos de SO y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Respaldos binarios pesados (>50MB)
+*.bundle
+*.tar.gz
+*.zip
+
+# Base de datos SQLite permitida explícitamente para el equipo:
+!backend/db.sqlite3
+!db.sqlite3
