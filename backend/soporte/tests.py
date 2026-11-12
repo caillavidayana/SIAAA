@@ -99,7 +99,7 @@ class FlujoSoporteCompraTests(APITestCase):
             "especificaciones_tecnicas": "Fuente 19V 2A",
             "cantidad_componente": 2,
             "justificacion_compra": "Es indispensable para recuperar el monitor.",
-            "costo_estimado": "250.00",
+            "costo_estimado": "85.00",
         }, format="multipart")
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["ticket"]["estado_codigo"], "EN_EJECUCION")
@@ -189,7 +189,7 @@ class FlujoSoporteCompraTests(APITestCase):
             "componente_requerido": "GPU de alta gama",
             "especificaciones_tecnicas": "GPU compatible con el equipo",
             "justificacion_compra": "El equipo no puede operar sin reemplazo.",
-            "costo_estimado": "9999.00",
+            "costo_estimado": "95.00",
         }, format="multipart")
         self.assertEqual(r.status_code, 200, r.data)
 

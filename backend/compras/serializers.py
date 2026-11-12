@@ -9,7 +9,10 @@ import re
 
 class MontoEstimadoField(serializers.DecimalField):
     def to_internal_value(self, data):
-        if not re.fullmatch(r"[1-9]+(?:\.[1-9]{1,2})?", str(data)):
+        # Solo dígitos y hasta dos decimales (igual que utils/monto.js del frontend):
+        # sin letras, signos, exponentes ni NaN/Infinity. Antes "[1-9]" rechazaba
+        # cualquier monto con ceros (100, 1250.50…).
+        if not re.fullmatch(r"\d+(?:\.\d{1,2})?", str(data).strip()):
             raise serializers.ValidationError(
                 "Ingrese un monto numérico con hasta dos decimales."
             )

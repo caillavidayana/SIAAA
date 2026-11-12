@@ -14,17 +14,49 @@
 -->
 
 <template>
-  <template v-if="estaAutenticado">
+  <div v-if="estaAutenticado" class="sia-asistente-raiz">
+
+    <!-- ===================================================
+         BURBUJA DE VOZ (visible con el chat cerrado)
+    =================================================== -->
+    <transition name="sia-fade">
+      <div
+        v-if="!abierto && burbujaVisible"
+        class="sia-burbuja-voz"
+        :class="'sia-burbuja-voz--' + estadoVoz"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="sia-burbuja-voz__cabecera">
+          <span class="sia-burbuja-voz__onda" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <strong>{{ textoEstadoVoz }}</strong>
+          <button class="sia-burbuja-voz__cerrar" @click="cancelarConversacion" title="Cancelar (Esc)" aria-label="Cancelar">×</button>
+        </div>
+        <p v-if="textoBurbuja" class="sia-burbuja-voz__texto">{{ textoBurbuja }}</p>
+      </div>
+    </transition>
+
+    <!-- Aviso de voz con el chat cerrado (permisos, conexión) -->
+    <transition name="sia-fade">
+      <div v-if="avisoVoz && !abierto" class="sia-aviso-voz" role="alert">
+        <span>{{ avisoVoz }}</span>
+        <button @click="avisoVoz = ''" aria-label="Cerrar aviso">×</button>
+      </div>
+    </transition>
 
     <!-- ===================================================
          BOTÓN FLOTANTE (FAB)
     =================================================== -->
     <button
       class="sia-fab"
-      :class="{ 'sia-fab--abierto': abierto }"
+      :class="{
+        'sia-fab--abierto': abierto,
+        'sia-fab--espera': estadoVoz === 'espera' && !abierto,
+        'sia-fab--voz': burbujaVisible && !abierto,
+      }"
       @click="toggleChat"
-      :title="abierto ? 'Cerrar asistente' : 'Abrir Asistente SIA'"
-      aria-label="Asistente SIA"
+      :title="abierto ? 'Cerrar asistente' : (estadoVoz === 'espera' ? `Di «Oye ${NOMBRE_ASISTENTE}» o haz clic para abrir` : `Abrir a ${NOMBRE_ASISTENTE}`)"
+      :aria-label="`Asistente ${NOMBRE_ASISTENTE}`"
     >
       <!-- Ícono robot cuando está cerrado -->
       <svg v-if="!abierto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
@@ -37,6 +69,13 @@
 
       <!-- Badge de notificación -->
       <span v-if="hayMensajeNuevo && !abierto" class="sia-fab__badge"></span>
+      <!-- Indicador "escuchando en segundo plano" -->
+      <span v-if="estadoVoz === 'espera' && !abierto" class="sia-fab__oido" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="11" height="11">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+      </span>
     </button>
 
 
@@ -49,7 +88,7 @@
         class="sia-ventana"
         :class="{ 'sia-ventana--expandida': expandido }"
         role="dialog"
-        aria-label="Asistente SIA"
+        :aria-label="`Asistente ${NOMBRE_ASISTENTE}`"
       >
 
         <!-- CABECERA INSTITUCIONAL SIA -->
@@ -62,18 +101,31 @@
             </div>
             <div>
               <div class="sia-ventana__titulo-box">
-                <span class="sia-ventana__nombre">Asistente SIA</span>
+                <span class="sia-ventana__nombre">{{ NOMBRE_ASISTENTE }} · Asistente SIA</span>
                 <span class="sia-ventana__tag-ia">IA</span>
               </div>
               <span class="sia-ventana__estado">
                 <span class="sia-ventana__estado-dot"></span>
-                En línea · Soporte Institucional
+                {{ vozActiva ? `Di «Oye ${NOMBRE_ASISTENTE}» para hablarme` : 'En línea · Soporte Institucional' }}
               </span>
             </div>
           </div>
 
           <!-- Acciones de cabecera -->
           <div class="sia-ventana__header-actions">
+            <!-- Interruptor de activación por voz ("Oye Tati") -->
+            <button
+              class="sia-ventana__btn-accion"
+              :class="{ 'sia-ventana__btn-accion--activo': vozActiva }"
+              @click="toggleVozActiva"
+              :aria-pressed="vozActiva"
+              :title="vozActiva ? `Activación por voz ENCENDIDA (clic para apagar)` : `Encender activación por voz: di «Oye ${NOMBRE_ASISTENTE}»`"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M17 20c-.29 0-.56-.06-.76-.15-.71-.37-1.21-.88-1.71-2.38-.51-1.56-1.47-2.29-2.39-3-.79-.61-1.61-1.24-2.32-2.53C9.29 10.98 9 9.93 9 9c0-2.8 2.2-5 5-5s5 2.2 5 5h2c0-3.93-3.07-7-7-7S7 5.07 7 9c0 1.26.38 2.65 1.07 3.9.91 1.65 1.98 2.48 2.85 3.15.81.62 1.39 1.07 1.71 2.05.6 1.82 1.37 2.84 2.73 3.55.51.23 1.07.35 1.64.35 2.21 0 4-1.79 4-4h-2c0 1.1-.9 2-2 2zM7.64 2.64L6.22 1.22C4.23 3.21 3 5.96 3 9s1.23 5.79 3.22 7.78l1.41-1.41C6.01 13.74 5 11.49 5 9s1.01-4.74 2.64-6.36zM11.5 9c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5-1.12-2.5-2.5-2.5-2.5 1.12-2.5 2.5z"/>
+              </svg>
+            </button>
+
             <!-- Botón Expandir / Reducir Ventana -->
             <button
               class="sia-ventana__btn-accion"
@@ -101,8 +153,8 @@
         <div v-if="modoLlamada" class="sia-banner-llamada">
           <div class="sia-banner-llamada__pulso"></div>
           <div class="sia-banner-llamada__texto">
-            <strong>Modo Conversación por Voz Activo</strong>
-            <span>{{ hablando ? 'SIA está hablando...' : (grabando ? 'Escuchando tu voz...' : 'Esperando tu consulta...') }}</span>
+            <strong>Conversación por voz con {{ NOMBRE_ASISTENTE }}</strong>
+            <span>{{ hablando ? `${NOMBRE_ASISTENTE} está hablando...` : (estadoVoz === 'pensando' ? 'Pensando...' : (transcripcionParcial || 'Te escucho...')) }}</span>
           </div>
           <button class="sia-banner-llamada__btn-salir" @click="toggleModoLlamada" title="Salir de llamada">Finalizar</button>
         </div>
@@ -122,7 +174,17 @@
               {{ mensajeBienvenida }}
             </p>
             <div class="sia-bienvenida__nota-voz">
-              💡 Puedes escribir tu consulta o <strong>presionar el micrófono 🎙️</strong> para dictar por voz.
+              <template v-if="vozActiva">
+                🎙️ Activación por voz encendida: di <strong>«Oye {{ NOMBRE_ASISTENTE }}»</strong> en cualquier pantalla y te respondo.
+              </template>
+              <template v-else-if="soportaReconocimiento">
+                💡 Puedes escribir, dictar con el micrófono o
+                <button type="button" class="sia-bienvenida__link" @click="toggleVozActiva">encender la activación por voz</button>
+                para llamarme diciendo <strong>«Oye {{ NOMBRE_ASISTENTE }}»</strong>.
+              </template>
+              <template v-else>
+                💡 Para hablar con {{ NOMBRE_ASISTENTE }} por voz usa Google Chrome o Microsoft Edge.
+              </template>
             </div>
             <div class="sia-sugerencias">
               <button
@@ -148,7 +210,7 @@
                 <button
                   v-if="msg.rol === 'bot'"
                   class="sia-mensaje__btn-escuchar"
-                  @click="hablarTexto(msg.texto)"
+                  @click="leerMensaje(msg.texto)"
                   title="Reproducir respuesta en voz alta"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="13" height="13">
@@ -171,15 +233,31 @@
           </div>
         </div>
 
-        <!-- Banner de Grabación por Voz (micrófono activo) -->
-        <div v-if="grabando && !modoLlamada" class="sia-voz-activo-banner">
+        <!-- Banner de voz (dictado o conversación iniciada con "Oye Tati") -->
+        <div v-if="(dictando || estadoVoz === 'escuchando' || hablando) && !modoLlamada" class="sia-voz-activo-banner">
           <span class="sia-voz-dot"></span>
-          <span>Escuchando... Di tu consulta y presiona el micrófono para finalizar</span>
+          <span class="sia-voz-activo-banner__texto">
+            <template v-if="dictando">{{ mensajeActual ? 'Dictando…' : 'Escuchando… di tu consulta' }}</template>
+            <template v-else-if="hablando">{{ NOMBRE_ASISTENTE }} está hablando…</template>
+            <template v-else>{{ transcripcionParcial || 'Le escucho, mi señor… ordene' }}</template>
+          </span>
+          <button
+            v-if="!dictando"
+            class="sia-voz-activo-banner__btn"
+            @click="cancelarConversacion"
+            title="Cancelar (Esc)"
+          >{{ hablando ? 'Detener' : 'Cancelar' }}</button>
+        </div>
+
+        <!-- Aviso de voz (permisos, conexión) -->
+        <div v-if="avisoVoz" class="sia-error-banner sia-error-banner--voz">
+          <span>🎙️ {{ avisoVoz }}</span>
+          <button @click="avisoVoz = ''" aria-label="Cerrar aviso">×</button>
         </div>
 
         <!-- Banner de Error -->
         <div v-if="errorConexion" class="sia-error-banner">
-          ⚠️ No se pudo conectar con el servidor. Reintentando...
+          ⚠️ No se pudo conectar con el servidor. Intenta nuevamente en unos segundos.
         </div>
 
         <!-- ÁREA DE INPUT CON BOTÓN DE MICRÓFONO -->
@@ -192,7 +270,6 @@
             rows="1"
             :disabled="cargando"
             @keydown.enter.exact.prevent="enviarMensaje"
-            @keydown.enter.shift.exact="null"
             @input="ajustarAltura"
             maxlength="2000"
           ></textarea>
@@ -203,7 +280,7 @@
             class="sia-ventana__btn-voz-continua"
             :class="{ 'sia-ventana__btn-voz-continua--activo': modoLlamada }"
             @click="toggleModoLlamada"
-            :title="modoLlamada ? 'Modo Conversación por Voz ACTIVO (clic para apagar)' : 'Iniciar conversación continua tipo llamada con SIA'"
+            :title="modoLlamada ? 'Conversación por voz ACTIVA (clic para terminar)' : `Conversar por voz con ${NOMBRE_ASISTENTE} sin decir su nombre cada vez`"
           >
             <!-- Ícono de persona hablando -->
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="19" height="19">
@@ -215,9 +292,9 @@
           <button
             type="button"
             class="sia-ventana__btn-mic"
-            :class="{ 'sia-ventana__btn-mic--grabando': grabando }"
+            :class="{ 'sia-ventana__btn-mic--grabando': dictando }"
             @click="toggleGrabacionManual"
-            :title="grabando ? 'Detener dictado' : 'Dictar consulta por voz (Micrófono)'"
+            :title="dictando ? 'Detener dictado' : 'Dictar consulta por voz (Micrófono)'"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="19" height="19">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
@@ -239,20 +316,26 @@
         </div>
 
         <div class="sia-ventana__subhint">
-          <span>🎙️ Presiona el micrófono para dictar · Enter para enviar</span>
+          <span>{{ vozActiva ? `🎙️ Di «Oye ${NOMBRE_ASISTENTE}» · Esc para cancelar · Enter para enviar` : '🎙️ Presiona el micrófono para dictar · Enter para enviar' }}</span>
         </div>
 
       </div>
     </transition>
-  </template>
+  </div>
 </template>
 
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  NOMBRE_ASISTENTE, detectarPalabraActivacion, restoOriginal, detectarComando,
+  limpiarParaVoz, elegirVoz, frasesParaVoz, describirPantalla, dividirEnFrases, extraerFrases,
+  buscarOpcionMenu, refiereAPantalla, opcionesMenu, esEco, esOrdenDeParar,
+} from '../utils/voz.js'
 
 const route = useRoute()
+const router = useRouter()
 
 /* ============================================================
    ESTADO
@@ -264,13 +347,10 @@ const mensajes        = ref([])
 const cargando        = ref(false)
 const errorConexion   = ref(false)
 const hayMensajeNuevo = ref(false)
-const grabando        = ref(false)
-const hablando        = ref(false)
 const modoLlamada     = ref(false)
 
 const contenedorMensajes = ref(null)
 const inputRef           = ref(null)
-let reconocimiento       = null
 
 /* Token reactivo y usuario */
 const rawToken = ref(localStorage.getItem('sigta_token') || '')
@@ -295,7 +375,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('storage', actualizarSesion)
   if (timer) clearInterval(timer)
-  detenerVozTotal()
 })
 
 const estaAutenticado = computed(() => {
@@ -364,28 +443,28 @@ const mensajeBienvenida = computed(() => {
   const rol = rolActivo.value
   switch (rol) {
     case 'AUXILIAR_SERVICIOS_GENERALES':
-      return 'Soy el asistente técnico de SIA para Mantenimiento. Te ayudo a consultar tus órdenes de trabajo asignadas, recepción de componentes en almacén, diagnósticos y reportes.'
+      return 'Soy Tati, tu asistente técnica de SIA para Mantenimiento. Te ayudo a consultar tus órdenes de trabajo asignadas, recepción de componentes en almacén, diagnósticos y reportes.'
     case 'ESPECIALISTA':
-      return 'Soy el asistente técnico de SIA para Soporte UTIC. Te ayudo a monitorear tus tickets asignados, tiempos de SLA, diagnóstico de incidentes y registro de soluciones.'
+      return 'Soy Tati, tu asistente técnica de SIA para Soporte UTIC. Te ayudo a monitorear tus tickets asignados, tiempos de SLA, diagnóstico de incidentes y registro de soluciones.'
     case 'SERVICIOS_GENERALES':
-      return 'Soy el asistente de gestión de SIA para la Jefatura de Mantenimiento. Te ayudo en la clasificación de solicitudes, supervisión de órdenes en infraestructura y aprobación de informes técnicos.'
+      return 'Soy Tati, tu asistente de gestión de SIA para la Jefatura de Mantenimiento. Te ayudo en la clasificación de solicitudes, supervisión de órdenes en infraestructura y aprobación de informes técnicos.'
     case 'JEFE_UTIC':
-      return 'Soy el asistente de supervisión de SIA para la Jefatura UTIC. Te ayudo con la asignación de tickets, control de carga de especialistas y monitoreo de SLAs.'
+      return 'Soy Tati, tu asistente de supervisión de SIA para la Jefatura UTIC. Te ayudo con la asignación de tickets, control de carga de especialistas y monitoreo de SLAs.'
     case 'ENCARGADO_COMPRAS_ALMACEN':
-      return 'Soy el asistente operativo de SIA para Almacén y Adquisiciones. Te ayudo a dar seguimiento a órdenes de compra, actas de recepción y entrega de componentes a los técnicos.'
+      return 'Soy Tati, tu asistente operativa de SIA para Almacén y Adquisiciones. Te ayudo a dar seguimiento a órdenes de compra, actas de recepción y entrega de componentes a los técnicos.'
     case 'DAF':
     case 'JEFE_DAF':
-      return 'Soy el asistente financiero de SIA para la DAF. Te ayudo a revisar certificaciones presupuestarias, autorizaciones de compra y control de fondos.'
+      return 'Soy Tati, tu asistente financiera de SIA para la DAF. Te ayudo a revisar certificaciones presupuestarias, autorizaciones de compra y control de fondos.'
     case 'TESORERIA':
-      return 'Soy el asistente financiero de SIA para Tesorería. Te ayudo a controlar órdenes autorizadas para pago, desembolsos y fondos rotatorios.'
+      return 'Soy Tati, tu asistente financiera de SIA para Tesorería. Te ayudo a controlar órdenes autorizadas para pago, desembolsos y fondos rotatorios.'
     case 'ADMIN':
     case 'SUPERUSER':
     case 'DIRECTOR':
-      return 'Soy el asistente ejecutivo y administrativo de SIA. Te brindo una visión integral de operaciones, métricas globales, seguridad y configuración institucional.'
+      return 'Soy Tati, tu asistente ejecutiva y administrativa de SIA. Te brindo una visión integral de operaciones, métricas globales, seguridad y configuración institucional.'
     case 'SOLICITANTE':
     case 'JEFE_CARRERA':
     default:
-      return 'Soy el asistente inteligente del SIA. Puedo orientarte sobre tus tickets activos, procedimientos de mantenimiento, compras y reglas operativas del sistema.'
+      return 'Soy Tati, la asistente inteligente del SIA. Puedo orientarte sobre tus tickets activos, procedimientos de mantenimiento, compras y reglas operativas del sistema.'
   }
 })
 
@@ -506,141 +585,979 @@ function ajustarAltura() {
 }
 
 /* ============================================================
-   RECONOCIMIENTO DE VOZ (STT) Y SÍNTESIS (TTS)
+   MOTOR DE VOZ — "Oye Tati"
+   ------------------------------------------------------------
+   Estados (estadoVoz):
+     inactivo   → no escucha nada.
+     espera     → escucha en segundo plano esperando el nombre "Tati".
+     escuchando → captura la consulta del usuario.
+     pensando   → consultando al servidor.
+     hablando   → Tati lee la respuesta (el micrófono se pausa para
+                  no escucharse a sí misma).
+   Un único reconocedor activo a la vez: cada instancia comprueba
+   `rec === r` antes de actuar, así los eventos tardíos de una
+   instancia anterior nunca pisan a la nueva.
 ============================================================ */
-function inicializarReconocimiento() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-  if (!SpeechRecognition) return null
+const SpeechRecognitionAPI = typeof window !== 'undefined'
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+  : null
+const soportaReconocimiento = !!SpeechRecognitionAPI
+const soportaSintesis = typeof window !== 'undefined' && 'speechSynthesis' in window
+const CLAVE_PREF_VOZ = 'sia_voz_activa'
+const MENSAJE_SIN_SOPORTE = 'Tu navegador no permite el reconocimiento de voz. Usa Google Chrome o Microsoft Edge.'
+const MENSAJE_SIN_HTTPS = 'El micrófono solo funciona con una conexión segura (https:// o localhost). Pide que el sistema se publique con HTTPS.'
 
-  const rec = new SpeechRecognition()
-  rec.lang = 'es-BO'
-  rec.continuous = false
-  rec.interimResults = false
-
-  rec.onstart = () => {
-    grabando.value = true
-  }
-
-  rec.onresult = (event) => {
-    const transcripcion = event.results[0][0].transcript
-    if (transcripcion) {
-      mensajeActual.value = (mensajeActual.value ? mensajeActual.value + ' ' : '') + transcripcion
-      ajustarAltura()
-      // En modo llamada, enviar automáticamente cuando termina de hablar
-      if (modoLlamada.value) {
-        nextTick(() => enviarMensaje())
-      }
-    }
-  }
-
-  rec.onerror = (err) => {
-    console.warn('Reconocimiento de voz:', err.error)
-    grabando.value = false
-    if (modoLlamada.value && err.error !== 'aborted') {
-      // Reintentar escuchar si está en modo llamada
-      setTimeout(() => {
-        if (modoLlamada.value && !hablando.value) iniciarEscucha()
-      }, 1000)
-    }
-  }
-
-  rec.onend = () => {
-    grabando.value = false
-    reconocimiento = null
-  }
-
-  return rec
+/** Comprueba que el navegador y la conexión permitan usar el micrófono; si no, muestra el motivo. */
+function puedeUsarMicrofono() {
+  if (!soportaReconocimiento) { avisoVoz.value = MENSAJE_SIN_SOPORTE; return false }
+  if (typeof window !== 'undefined' && window.isSecureContext === false) { avisoVoz.value = MENSAJE_SIN_HTTPS; return false }
+  return true
 }
 
-function iniciarEscucha() {
-  if (hablando.value) return
+function leerPreferenciaVoz() {
+  try { return localStorage.getItem(CLAVE_PREF_VOZ) === '1' } catch { return false }
+}
+function guardarPreferenciaVoz(valor) {
+  try { localStorage.setItem(CLAVE_PREF_VOZ, valor ? '1' : '0') } catch {}
+}
+
+const vozActiva            = ref(soportaReconocimiento && window.isSecureContext !== false && leerPreferenciaVoz())
+const estadoVoz            = ref('inactivo')
+const dictando             = ref(false)
+const transcripcionParcial = ref('')
+const textoHablando        = ref('')
+const avisoVoz             = ref('')
+
+const hablando = computed(() => estadoVoz.value === 'hablando')
+
+const burbujaVisible = computed(() => ['escuchando', 'pensando', 'hablando'].includes(estadoVoz.value))
+const textoEstadoVoz = computed(() => {
+  switch (estadoVoz.value) {
+    case 'escuchando': return transcripcionParcial.value ? 'Le escucho…' : 'Ordene, ¿en qué puedo ayudarle?'
+    case 'pensando':   return 'Pensando…'
+    case 'hablando':   return `${NOMBRE_ASISTENTE} está hablando`
+    default:           return ''
+  }
+})
+const textoBurbuja = computed(() => {
+  if (estadoVoz.value === 'hablando') {
+    const t = limpiarParaVoz(textoHablando.value)
+    return t.length > 240 ? t.slice(0, 237) + '…' : t
+  }
+  return transcripcionParcial.value
+})
+
+let rec = null
+let finHablaEn = 0
+let ultimoDicho = ''
+let idiomaReconocimiento = 'es-BO'
+let fallosSeguidos = 0
+let errorEnSesion = false
+let bufferConsulta = ''
+let textoBaseDictado = ''
+let turnoVoz = 0
+let ultimaActivacion = 0
+let tReinicio = null, tSilencio = null, tSinVoz = null, tActivacion = null
+
+function limpiarTimers() {
+  clearTimeout(tSilencio); clearTimeout(tSinVoz); clearTimeout(tActivacion)
+  tSilencio = tSinVoz = tActivacion = null
+}
+
+const estadoReposo = () => (vozActiva.value ? 'espera' : 'inactivo')
+
+function debeEscuchar() {
+  if (!soportaReconocimiento || !estaAutenticado.value) return false
+  // Solo escucha la pestaña visible y activa (con varias pestañas del SIA, responde una sola).
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false
+  if (!esPestanaActiva()) return false
+  if (estadoVoz.value === 'hablando' || estadoVoz.value === 'pensando') {
+    // Mientras habla o piensa sigue escuchando, solo para "Tati…" o "para" (interrumpir).
+    return !dictando.value && (vozActiva.value || modoLlamada.value)
+  }
+  return dictando.value || estadoVoz.value === 'escuchando' || estadoVoz.value === 'espera'
+}
+
+/* ---------------- Una sola pestaña escuchando ---------------- */
+const ID_PESTANA = Math.random().toString(36).slice(2)
+const CLAVE_PESTANA = 'sia_voz_pestana'
+function reclamarPestana() {
+  try { localStorage.setItem(CLAVE_PESTANA, ID_PESTANA) } catch {}
+}
+function esPestanaActiva() {
   try {
-    if (reconocimiento) {
-      try { reconocimiento.abort() } catch {}
-      reconocimiento = null
-    }
-    reconocimiento = inicializarReconocimiento()
-    if (reconocimiento) {
-      reconocimiento.start()
-    }
-  } catch (e) {
-    console.warn('Error al iniciar escucha:', e)
-    grabando.value = false
+    const v = localStorage.getItem(CLAVE_PESTANA)
+    return !v || v === ID_PESTANA
+  } catch { return true }
+}
+function alCambiarPestanaActiva(e) {
+  if (e.key !== CLAVE_PESTANA) return
+  if (!e.newValue && document.visibilityState === 'visible') {
+    // La pestaña que escuchaba se cerró: esta toma el relevo.
+    reclamarPestana()
+    programarReinicio(300)
+  } else if (!esPestanaActiva()) {
+    // Otra pestaña del SIA pasó a primer plano: esta deja de escuchar.
+    if (['escuchando', 'pensando', 'hablando'].includes(estadoVoz.value)) cancelarConversacion()
+    detenerReconocimiento()
+  }
+}
+function soltarPestana() {
+  try { if (localStorage.getItem(CLAVE_PESTANA) === ID_PESTANA) localStorage.removeItem(CLAVE_PESTANA) } catch {}
+}
+
+/* ---------------- Reconocimiento (micrófono) ---------------- */
+function arrancarReconocimiento() {
+  clearTimeout(tReinicio)
+  if (rec || !debeEscuchar()) return
+
+  const r = new SpeechRecognitionAPI()
+  r.lang = idiomaReconocimiento
+  r.continuous = true
+  r.interimResults = true
+  r.maxAlternatives = 3
+
+  r.onstart = () => { errorEnSesion = false }
+  r.onresult = (e) => {
+    if (rec !== r) return
+    fallosSeguidos = 0
+    if (avisoVoz.value.startsWith('Sin conexión')) avisoVoz.value = ''
+    procesarResultado(e)
+  }
+  r.onerror = (e) => { if (rec === r) manejarErrorReconocimiento(e.error) }
+  r.onend = () => {
+    if (rec !== r) return
+    rec = null
+    if (!errorEnSesion) fallosSeguidos = 0
+    // Chrome corta la escucha continua cada cierto tiempo: se reanuda sola.
+    programarReinicio(fallosSeguidos ? Math.min(500 * 2 ** fallosSeguidos, 15000) : 250)
+  }
+
+  rec = r
+  try {
+    r.start()
+  } catch (err) {
+    console.warn('No se pudo iniciar el micrófono:', err)
+    rec = null
+    fallosSeguidos++
+    programarReinicio(1000)
   }
 }
 
-function detenerEscucha() {
-  if (reconocimiento) {
-    try { reconocimiento.abort() } catch {}
-    reconocimiento = null
-  }
-  grabando.value = false
+function programarReinicio(ms = 250) {
+  clearTimeout(tReinicio)
+  if (debeEscuchar()) tReinicio = setTimeout(arrancarReconocimiento, ms)
 }
 
-function toggleGrabacionManual() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-  if (!SpeechRecognition) {
-    alert('Tu navegador actual no admite Web Speech API para reconocimiento de voz. Te recomendamos Google Chrome o Microsoft Edge.')
+function detenerReconocimiento() {
+  clearTimeout(tReinicio)
+  const r = rec
+  rec = null
+  if (r) { try { r.abort() } catch {} }
+}
+
+function manejarErrorReconocimiento(error) {
+  switch (error) {
+    case 'no-speech':
+    case 'aborted':
+      return // normal: nadie habló o se reinició a propósito
+    case 'not-allowed':
+    case 'service-not-allowed':
+      apagarVozPorError(`${NOMBRE_ASISTENTE} no tiene permiso para usar el micrófono. Permítelo desde el candado de la barra de direcciones y vuelve a activar la voz.`)
+      return
+    case 'audio-capture':
+      apagarVozPorError('No se detectó ningún micrófono. Conecta uno y vuelve a activar la voz.')
+      return
+    case 'language-not-supported':
+      idiomaReconocimiento = 'es-ES'
+      return
+    case 'network':
+      errorEnSesion = true
+      fallosSeguidos++
+      if (fallosSeguidos >= 2) avisoVoz.value = 'Sin conexión con el servicio de voz. Reintentando…'
+      return
+    default:
+      errorEnSesion = true
+      fallosSeguidos++
+      console.warn('Reconocimiento de voz:', error)
+  }
+}
+
+function apagarVozPorError(mensaje) {
+  vozActiva.value = false
+  guardarPreferenciaVoz(false)
+  modoLlamada.value = false
+  dictando.value = false
+  limpiarTimers()
+  detenerHabla()
+  detenerReconocimiento()
+  estadoVoz.value = 'inactivo'
+  avisoVoz.value = mensaje
+}
+
+function procesarResultado(e) {
+  let finalTxt = ''
+  let interino = ''
+  const alternativas = []
+  for (let i = e.resultIndex; i < e.results.length; i++) {
+    const res = e.results[i]
+    if (res.isFinal) {
+      finalTxt += res[0].transcript + ' '
+      for (let k = 1; k < res.length; k++) alternativas.push(res[k].transcript)
+    } else {
+      interino += res[0].transcript + ' '
+    }
+  }
+  finalTxt = finalTxt.trim()
+  interino = interino.trim()
+
+  if (dictando.value) return manejarDictado(finalTxt, interino)
+  if (estadoVoz.value === 'hablando' || estadoVoz.value === 'pensando') return manejarInterrupcion(finalTxt, alternativas)
+  if (estadoVoz.value === 'espera') return buscarPalabraActivacion(finalTxt, interino, alternativas)
+  if (estadoVoz.value === 'escuchando') return acumularConsulta(finalTxt, interino)
+}
+
+/* ---------------- Interrumpir a Tati ("Tati…", "para", "silencio") ---------------- */
+function manejarInterrupcion(finalTxt, alternativas) {
+  if (!finalTxt) return
+  const dicho = estadoVoz.value === 'hablando' ? textoHablando.value : ''
+  for (const texto of [finalTxt, ...alternativas]) {
+    if (esEco(texto, dicho)) continue // es su propia voz captada por los parlantes
+    if (esOrdenDeParar(texto)) {
+      ++turnoVoz
+      if (controlConsulta) { controlConsulta.porUsuario = true; controlConsulta.abort() }
+      detenerHabla()
+      if (modoLlamada.value) pasarAEscuchar(0)
+      else volverAReposo()
+      return
+    }
+    const det = detectarPalabraActivacion(texto)
+    if (det.detectado) {
+      ++turnoVoz
+      if (controlConsulta) { controlConsulta.porUsuario = true; controlConsulta.abort() }
+      detenerHabla()
+      detenerReconocimiento()
+      ultimaActivacion = 0
+      activarAsistente(restoOriginal(texto, det.resto))
+      return
+    }
+  }
+}
+
+/* ---------------- Palabra de activación ---------------- */
+function buscarPalabraActivacion(finalTxt, interino, alternativas) {
+  clearTimeout(tActivacion)
+  const candidatos = finalTxt ? [finalTxt, ...alternativas] : [interino]
+  for (const texto of candidatos) {
+    const det = detectarPalabraActivacion(texto)
+    if (!det.detectado) continue
+    const resto = restoOriginal(texto, det.resto)
+    if (finalTxt) {
+      activarAsistente(resto)
+    } else {
+      // Resultado provisional: si el usuario deja de hablar 1,2 s, se activa igual.
+      tActivacion = setTimeout(() => activarAsistente(resto), 1200)
+    }
     return
   }
+}
 
-  if (grabando.value) {
-    detenerEscucha()
+function activarAsistente(resto) {
+  const ahora = Date.now()
+  if (ahora - ultimaActivacion < 700) return // evita doble disparo (provisional + final)
+  ultimaActivacion = ahora
+  clearTimeout(tActivacion)
+  avisoVoz.value = ''
+  sonarTono()
+
+  if (resto && detectarComando(resto)?.tipo !== 'saludo') {
+    procesarConsulta(resto)
   } else {
-    iniciarEscucha()
+    decirYEscuchar(frasesSaludo(), 8000)
   }
 }
 
-function hablarTexto(texto, callbackAlTerminar = null) {
-  if (!window.speechSynthesis) return
-  window.speechSynthesis.cancel()
+/* ---------------- Captura de la consulta ---------------- */
+function acumularConsulta(finalTxt, interino) {
+  // Los primeros segundos tras hablar, el micrófono puede captar el final de su propia voz.
+  if (Date.now() - finHablaEn < 2500 && ultimoDicho && esEco(finalTxt || interino, ultimoDicho)) return
+  if (finalTxt) bufferConsulta = `${bufferConsulta} ${finalTxt}`.trim()
+  transcripcionParcial.value = `${bufferConsulta} ${interino}`.trim()
+  if (!transcripcionParcial.value) return
+  clearTimeout(tSinVoz)
+  clearTimeout(tSilencio)
+  // Tras una pausa breve se considera terminada la frase.
+  tSilencio = setTimeout(finalizarConsulta, interino ? 2000 : 1100)
+}
 
-  const limpio = texto
-    .replace(/<[^>]*>?/gm, '')
-    .replace(/[*_#`~•]/g, ' ')
-    .replace(/\n/g, ' ')
-    .trim()
+function finalizarConsulta() {
+  let texto = (bufferConsulta || transcripcionParcial.value).trim()
+  const det = detectarPalabraActivacion(texto)
+  if (det.detectado) texto = restoOriginal(texto, det.resto)
+  if (!texto || detectarComando(texto)?.tipo === 'saludo') {
+    decirYEscuchar(FRASE_DIME, 8000)
+    return
+  }
+  sonarTono('fin') // "te escuché"
+  procesarConsulta(texto)
+}
 
-  const utter = new SpeechSynthesisUtterance(limpio)
-  utter.lang = 'es-BO'
-  utter.rate = 1.05
+function pasarAEscuchar(timeoutMs) {
+  limpiarTimers()
+  // Sesión de micrófono nueva: lo oído mientras hablaba no se mezcla con la pregunta.
+  detenerReconocimiento()
+  bufferConsulta = ''
+  transcripcionParcial.value = ''
+  textoHablando.value = ''
+  estadoVoz.value = 'escuchando'
+  if (timeoutMs) {
+    tSinVoz = setTimeout(() => {
+      if (estadoVoz.value === 'escuchando' && !transcripcionParcial.value) volverAReposo()
+    }, timeoutMs)
+  }
+  // Pausa corta para que el micrófono no capte el final de la voz de Tati.
+  programarReinicio(300)
+}
 
-  utter.onstart = () => {
-    hablando.value = true
-    detenerEscucha()
+function volverAReposo() {
+  limpiarTimers()
+  detenerReconocimiento()
+  bufferConsulta = ''
+  transcripcionParcial.value = ''
+  textoHablando.value = ''
+  estadoVoz.value = estadoReposo()
+  programarReinicio(300)
+}
+
+async function decirYEscuchar(texto, timeoutMs) {
+  limpiarTimers()
+  detenerReconocimiento()
+  const turno = ++turnoVoz
+  estadoVoz.value = 'hablando'
+  const completo = await hablar(texto)
+  if (!completo || turno !== turnoVoz) return
+  pasarAEscuchar(timeoutMs)
+}
+
+async function procesarConsulta(texto) {
+  limpiarTimers()
+  detenerReconocimiento()
+  bufferConsulta = ''
+  transcripcionParcial.value = texto
+  estadoVoz.value = 'pensando'
+  const turno = ++turnoVoz
+
+  // Órdenes locales (describir pantalla, navegar, repetir…): respuesta instantánea, sin IA.
+  const comando = detectarComando(texto)
+  if (comando?.tipo === 'detener') { volverAReposo(); return }
+  let seguirEscuchando = true
+  let respuesta
+  const local = comando ? ejecutarComando(comando) : null
+  if (local) {
+    seguirEscuchando = local.seguir
+    respuesta = local.respuesta
+    registrarIntercambio(texto, respuesta)
   }
 
-  utter.onend = () => {
-    hablando.value = false
-    if (callbackAlTerminar) {
-      callbackAlTerminar()
+  let completo
+  if (local) {
+    if (turno !== turnoVoz) return
+    estadoVoz.value = 'hablando'
+    completo = await hablar(respuesta)
+  } else {
+    completo = await consultarYHablar(texto, turno)
+  }
+  if (!completo || turno !== turnoVoz) return
+
+  if (modoLlamada.value) pasarAEscuchar(0)                            // llamada: sigue escuchando sin límite
+  else if (vozActiva.value && seguirEscuchando) pasarAEscuchar(7000)  // unos segundos para una pregunta de seguimiento
+  else volverAReposo()
+}
+
+/**
+ * Consulta a la IA y Tati empieza a hablar en cuanto llega la primera frase
+ * completa (no espera la respuesta entera). Devuelve lo mismo que hablar().
+ */
+async function consultarYHablar(texto, turno) {
+  const mio = ++idHabla
+  detenerSalidaAudio()
+  textoHablando.value = ''
+  const cola = crearColaFrases()
+  let caracteres = 0
+  let recortado = false
+  let hubo = false
+
+  const encolar = (fragmento) => {
+    if (recortado || mio !== idHabla) return
+    for (const frase of dividirEnFrases(limpiarParaVoz(fragmento), 180)) {
+      if (caracteres + frase.length > LIMITE_VOZ) {
+        recortado = true
+        cola.push(AVISO_DETALLE_CHAT)
+        break
+      }
+      caracteres += frase.length
+      cola.push(frase)
+      textoHablando.value = `${textoHablando.value} ${frase}`.trim()
+    }
+    hubo = true
+    if (estadoVoz.value === 'pensando' && turno === turnoVoz) estadoVoz.value = 'hablando'
+  }
+
+  const reproduccion = reproducirFrases(cola, mio)
+  // Si la IA tarda, Tati avisa en vez de quedarse en silencio.
+  const espera = setTimeout(() => {
+    if (!hubo && mio === idHabla && turno === turnoVoz) {
+      cola.push(FRASE_ESPERA)
+      textoHablando.value = FRASE_ESPERA
+      if (estadoVoz.value === 'pensando') estadoVoz.value = 'hablando'
+    }
+  }, 2500)
+  const respuesta = await consultarServidor(texto, { voz: true, alFrase: encolar })
+  clearTimeout(espera)
+  if (!hubo) encolar(respuesta) // respuesta sin streaming (error o respaldo)
+  textoHablando.value = respuesta
+  cola.cerrar()
+  return reproduccion
+}
+
+/* ---------------- Órdenes locales ---------------- */
+const NOMBRES_DESTINO = {
+  dashboard: 'el inicio',
+  notificaciones: 'tus notificaciones',
+  'mis-solicitudes': 'tus solicitudes',
+  soporte: 'soporte técnico',
+  mantenimiento: 'mantenimiento',
+  compras: 'compras',
+  perfil: 'tu perfil',
+  configuracion: 'la configuración',
+}
+
+/** Busca la ruta de una sección según el área (rol) en la que está el usuario. */
+function rutaDestino(destino) {
+  const prefijo = (route.path || '').split('/')[1] || 'usuario'
+  const candidatos = {
+    dashboard: [`/${prefijo}/dashboard`],
+    notificaciones: [`/${prefijo}/notificaciones`],
+    'mis-solicitudes': [`/${prefijo}/mis-solicitudes`],
+    soporte: [`/${prefijo}/soporte`, `/${prefijo}/tickets`],
+    mantenimiento: [`/${prefijo}/mantenimiento`],
+    compras: [`/${prefijo}/compras`, `/${prefijo}/requerimientos`],
+    perfil: [`/${prefijo}/perfil`],
+    configuracion: [`/${prefijo}/configuracion`, `/${prefijo}/preferencias`],
+  }[destino] || []
+  for (const ruta of candidatos) {
+    try {
+      const r = router.resolve(ruta)
+      if (r.matched.length && !r.matched.some(m => m.path.includes(':pathMatch'))) return ruta
+    } catch {}
+  }
+  return null
+}
+
+function ultimaRespuestaBot() {
+  for (let i = mensajes.value.length - 1; i >= 0; i--) {
+    if (mensajes.value[i].rol === 'bot') return mensajes.value[i].texto
+  }
+  return ''
+}
+
+/** Ejecuta una orden local. Devuelve { respuesta, seguir } (seguir = escuchar una pregunta de seguimiento). */
+function ejecutarComando(comando) {
+  switch (comando.tipo) {
+    case 'despedida':
+      modoLlamada.value = false
+      return { respuesta: 'Con mucho gusto. Aquí estoy cuando me necesites.', seguir: false }
+    case 'desactivar':
+      vozActiva.value = false
+      guardarPreferenciaVoz(false)
+      modoLlamada.value = false
+      return { respuesta: 'Listo, apagué la activación por voz. Cuando quieras volver a llamarme, la enciendes desde el chat.', seguir: false }
+    case 'describir':
+      try {
+        return { respuesta: describirPantalla(document).hablado, seguir: true }
+      } catch (err) {
+        console.warn('No se pudo describir la pantalla:', err)
+        return { respuesta: 'Qué pena, no pude leer esta pantalla en este momento.', seguir: true }
+      }
+    case 'repetir':
+      return { respuesta: ultimaRespuestaBot() || 'Todavía no te he dicho nada en esta conversación, cuéntame qué necesitas.', seguir: true }
+    case 'ayuda':
+      return {
+        respuesta: 'Claro que sí. Puedo responder preguntas sobre tus tickets, mantenimientos y compras. También puedo describir la pantalla en la que estás, llevarte a otra sección, por ejemplo: llévame a notificaciones, y repetir mi última respuesta. Para callarme, presiona Escape.',
+        seguir: true,
+      }
+    case 'abrir':
+      abierto.value = true
+      hayMensajeNuevo.value = false
+      return { respuesta: 'Listo, aquí tienes el chat.', seguir: true }
+    case 'cerrar':
+      abierto.value = false
+      return { respuesta: 'Listo, cerré el chat.', seguir: false }
+    case 'saludo':
+      return { respuesta: `¡Hola${nombreUsuario.value ? ' ' + nombreUsuario.value : ''}! ¿Qué más? ¿En qué te puedo ayudar?`, seguir: true }
+    case 'navegar': {
+      // 1) Como lo haría una persona: la opción del menú lateral de su rol.
+      let opcion = null
+      try { opcion = buscarOpcionMenu(document, comando) } catch {}
+      if (opcion) {
+        opcion.elemento.click()
+        return { respuesta: `Listo, ya te abrí ${opcion.etiqueta}.`, seguir: true }
+      }
+      // 2) Una ruta conocida del sistema.
+      const ruta = comando.destino ? rutaDestino(comando.destino) : null
+      const nombre = NOMBRES_DESTINO[comando.destino] || comando.texto
+      if (ruta && ruta === route.path) return { respuesta: `Ya estás en ${nombre}, ¿qué más necesitas?`, seguir: true }
+      if (ruta) {
+        router.push(ruta).catch(() => {})
+        return { respuesta: `Dale, te llevo a ${nombre}.`, seguir: true }
+      }
+      // 3) Sección conocida que este rol no tiene: decirlo y ofrecer las opciones reales.
+      if (comando.destino) {
+        let opciones = []
+        try { opciones = opcionesMenu(document) } catch {}
+        return {
+          respuesta: `Qué pena, no encontré ${nombre} en tu menú.` + (opciones.length ? ` Te puedo abrir: ${opciones.join(', ')}.` : ''),
+          seguir: true,
+        }
+      }
+      // 4) No es una sección: se deja que responda la IA.
+      return null
+    }
+    default:
+      return { respuesta: 'Qué pena, no te entendí. ¿Me lo repites, por favor?', seguir: true }
+  }
+}
+
+function registrarIntercambio(pregunta, respuesta) {
+  mensajes.value.push({ rol: 'usuario', texto: pregunta, hora: horaActual() })
+  mensajes.value.push({ rol: 'bot', texto: respuesta, hora: horaActual() })
+  if (!abierto.value) hayMensajeNuevo.value = true
+  scrollAbajo()
+}
+
+function cancelarConversacion() {
+  ++turnoVoz
+  if (controlConsulta) { controlConsulta.porUsuario = true; controlConsulta.abort() }
+  modoLlamada.value = false
+  detenerHabla()
+  volverAReposo()
+}
+
+/* ---------------- Activación por voz (interruptor) ---------------- */
+function toggleVozActiva() {
+  if (!puedeUsarMicrofono()) return
+  if (dictando.value) detenerDictado()
+
+  vozActiva.value = !vozActiva.value
+  guardarPreferenciaVoz(vozActiva.value)
+
+  if (vozActiva.value) {
+    avisoVoz.value = ''
+    sonarTono()
+    precargarFrasesFrecuentes()
+    // Este clic también "desbloquea" la voz del navegador para el resto de la sesión.
+    if (modoLlamada.value) return
+    limpiarTimers()
+    detenerReconocimiento()
+    const turno = ++turnoVoz
+    estadoVoz.value = 'hablando'
+    hablar(`¡Listo! Cuando me necesites, solo di: oye ${NOMBRE_ASISTENTE}.`).then(ok => {
+      if (ok && turno === turnoVoz) volverAReposo()
+    })
+  } else {
+    cancelarConversacion()
+  }
+}
+
+/* ---------------- Dictado manual (botón micrófono) ---------------- */
+function toggleGrabacionManual() {
+  if (!puedeUsarMicrofono()) return
+  if (dictando.value) { detenerDictado(); return }
+
+  if (estadoVoz.value !== 'espera' && estadoVoz.value !== 'inactivo') cancelarConversacion()
+  limpiarTimers()
+  detenerReconocimiento()
+  textoBaseDictado = mensajeActual.value.trim()
+  dictando.value = true
+  arrancarReconocimiento()
+  tSilencio = setTimeout(detenerDictado, 8000) // nadie habló
+}
+
+function manejarDictado(finalTxt, interino) {
+  if (finalTxt) textoBaseDictado = `${textoBaseDictado} ${finalTxt}`.trim()
+  mensajeActual.value = `${textoBaseDictado} ${interino}`.trim()
+  ajustarAltura()
+  clearTimeout(tSilencio)
+  tSilencio = setTimeout(detenerDictado, 2500)
+}
+
+function detenerDictado() {
+  clearTimeout(tSilencio)
+  if (!dictando.value) return
+  dictando.value = false
+  detenerReconocimiento()
+  programarReinicio(300) // si la activación por voz está encendida, vuelve a esperar "Tati"
+  nextTick(() => inputRef.value?.focus())
+}
+
+/* ---------------- Modo llamada (conversación continua) ---------------- */
+function toggleModoLlamada() {
+  if (!puedeUsarMicrofono()) return
+  if (modoLlamada.value) { cancelarConversacion(); return }
+  if (dictando.value) detenerDictado()
+  ++turnoVoz
+  detenerHabla()
+  modoLlamada.value = true
+  sonarTono()
+  pasarAEscuchar(0)
+}
+
+/* ---------------- Síntesis de voz (TTS) — voz colombiana de Tati ----------------
+   1. Voz principal: "Salomé" (es-CO) generada por el servidor (/api/asistente/voz/),
+      igual en cualquier navegador. Se lee frase por frase y la siguiente frase se
+      pide mientras suena la actual, así no hay silencios ni cortes.
+   2. Respaldo: si el servidor o internet fallan, la voz del navegador más parecida
+      (es-CO, latina, femenina). Tras un fallo se usa el respaldo durante 1 minuto
+      para no hacer esperar al usuario en cada frase.
+------------------------------------------------------------------------------- */
+let idHabla = 0
+let vocesDisponibles = []
+let audioActual = null
+let vozServidorFallaHasta = 0
+const cacheAudio = new Map() // frase → Promise<blobURL | null>
+const MAX_CACHE_AUDIO = 40
+
+function cargarVoces() {
+  if (soportaSintesis) vocesDisponibles = window.speechSynthesis.getVoices()
+}
+
+function pedirAudio(frase) {
+  if (Date.now() < vozServidorFallaHasta || typeof Audio === 'undefined') return Promise.resolve(null)
+  if (cacheAudio.has(frase)) return cacheAudio.get(frase)
+
+  const promesa = (async () => {
+    const control = new AbortController()
+    const limite = setTimeout(() => control.abort(), 9000)
+    try {
+      const res = await fetch('/api/asistente/voz/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token.value}` },
+        body: JSON.stringify({ texto: frase }),
+        signal: control.signal,
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      if (!blob.size) throw new Error('audio vacío')
+      return URL.createObjectURL(blob)
+    } catch (err) {
+      console.warn('Voz de Tati no disponible, se usa la del navegador:', err?.message || err)
+      vozServidorFallaHasta = Date.now() + 60000
+      cacheAudio.delete(frase)
+      return null
+    } finally {
+      clearTimeout(limite)
+    }
+  })()
+
+  cacheAudio.set(frase, promesa)
+  if (cacheAudio.size > MAX_CACHE_AUDIO) {
+    const [clave, vieja] = cacheAudio.entries().next().value
+    cacheAudio.delete(clave)
+    vieja.then(url => url && URL.revokeObjectURL(url))
+  }
+  return promesa
+}
+
+/** Pide por adelantado frases frecuentes (saludo) para que suenen al instante. */
+function precargarVoz(texto) {
+  frasesParaVoz(texto).forEach(pedirAudio)
+}
+
+function frasesSaludo() {
+  return 'Ordene, mi señor. ¿En qué puedo ayudarle?'
+}
+
+/** Reproduce un MP3. Resuelve 'ok' | 'error' | 'bloqueado' | 'cancelado'. */
+function reproducirAudio(url, mio) {
+  return new Promise(resolve => {
+    const audio = new Audio(url)
+    audioActual = audio
+    let listo = false
+    let guardia = null
+    const fin = (r) => {
+      if (listo) return
+      listo = true
+      clearTimeout(guardia)
+      if (audioActual === audio) audioActual = null
+      resolve(r)
+    }
+    audio.onended = () => fin('ok')
+    audio.onerror = () => fin('error')
+    audio.onpause = () => { if (mio !== idHabla) fin('cancelado') }
+    audio.onloadedmetadata = () => {
+      if (Number.isFinite(audio.duration)) {
+        clearTimeout(guardia)
+        guardia = setTimeout(() => fin('ok'), (audio.duration + 3) * 1000)
+      }
+    }
+    guardia = setTimeout(() => fin('ok'), 30000) // red de seguridad
+    const p = audio.play()
+    if (p?.catch) p.catch(e => fin(e?.name === 'NotAllowedError' ? 'bloqueado' : 'error'))
+  })
+}
+
+/** Voz del navegador (respaldo). Resuelve 'ok' | 'bloqueado' | 'cancelado'. */
+function hablarNavegador(frase, mio) {
+  return new Promise(resolve => {
+    if (!soportaSintesis) return resolve('ok')
+    const synth = window.speechSynthesis
+    let listo = false
+    let guardia = null
+    const fin = (r) => {
+      if (listo) return
+      listo = true
+      clearTimeout(guardia)
+      resolve(r)
+    }
+    const u = new SpeechSynthesisUtterance(frase)
+    const voz = elegirVoz(vocesDisponibles.length ? vocesDisponibles : synth.getVoices())
+    if (voz) { u.voice = voz; u.lang = voz.lang } else { u.lang = 'es-CO' }
+    u.rate = 0.96  // mismo carácter cálido que la voz del servidor
+    u.pitch = 0.95
+    u.onend = () => fin('ok')
+    u.onerror = (e) => {
+      if (e.error === 'not-allowed') fin('bloqueado')
+      else if (e.error === 'interrupted' || e.error === 'canceled') fin('cancelado')
+      else fin('ok')
+    }
+    // Algunos navegadores no disparan "onend": no dejar la conversación colgada.
+    guardia = setTimeout(() => fin(mio === idHabla ? 'ok' : 'cancelado'), Math.max(6000, frase.length * 110))
+    setTimeout(() => {
+      if (mio !== idHabla) return fin('cancelado')
+      synth.resume()
+      synth.speak(u)
+    }, 60)
+  })
+}
+
+function detenerSalidaAudio() {
+  if (audioActual) { try { audioActual.pause() } catch {} }
+  if (soportaSintesis) window.speechSynthesis.cancel()
+}
+
+/**
+ * Lee un texto en voz alta con la voz de Tati. Siempre resuelve (nunca deja la
+ * conversación colgada):
+ *   true  → terminó (o el navegador no pudo hablar; se continúa igual)
+ *   false → fue interrumpida por otra lectura o por "cancelar".
+ */
+async function hablar(texto) {
+  const mio = ++idHabla
+  detenerSalidaAudio()
+  textoHablando.value = texto
+  const frases = frasesParaVoz(texto, { max: LIMITE_VOZ })
+  if (!frases.length) return true
+  // Se piden todas las frases en paralelo (máx. ~4): mientras suena la primera,
+  // las demás ya se están generando en el servidor.
+  frases.forEach(pedirAudio)
+  return reproducirFrases(frases, mio)
+}
+
+const LIMITE_VOZ = 600
+const AVISO_DETALLE_CHAT = 'El resto te lo dejé escrito en el chat.'
+const FRASE_ESPERA = 'Regálame un momentico, ya te cuento.'
+const FRASE_DIME = '¿Sí, mi señor? Ordene.'
+
+/** Cola asíncrona de frases: se llena mientras llega la respuesta y se lee en orden. */
+function crearColaFrases() {
+  const items = []
+  let esperando = null
+  let cerrada = false
+  return {
+    push(frase) {
+      pedirAudio(frase) // la voz se genera mientras suena la frase anterior
+      if (esperando) { esperando({ value: frase, done: false }); esperando = null } else items.push(frase)
+    },
+    cerrar() {
+      cerrada = true
+      if (esperando) { esperando({ value: undefined, done: true }); esperando = null }
+    },
+    [Symbol.asyncIterator]() {
+      return {
+        next: () => items.length
+          ? Promise.resolve({ value: items.shift(), done: false })
+          : cerrada ? Promise.resolve({ value: undefined, done: true }) : new Promise(r => { esperando = r }),
+      }
+    },
+  }
+}
+
+/** Lee en orden las frases (lista o cola). true = terminó; false = interrumpida. */
+async function reproducirFrases(fuente, mio) {
+  try {
+    return await reproducirFrasesSinRegistro(fuente, mio)
+  } finally {
+    finHablaEn = Date.now()
+    ultimoDicho = textoHablando.value
+  }
+}
+
+async function reproducirFrasesSinRegistro(fuente, mio) {
+  for await (const frase of fuente) {
+    if (mio !== idHabla) return false
+    const url = await pedirAudio(frase)
+    if (mio !== idHabla) return false
+
+    let r = url ? await reproducirAudio(url, mio) : 'error'
+    if (r === 'error' && mio === idHabla) r = await hablarNavegador(frase, mio)
+
+    if (mio !== idHabla || r === 'cancelado') return false
+    if (r === 'bloqueado') {
+      avisoVoz.value = `Haz clic una vez en la página para que ${NOMBRE_ASISTENTE} pueda hablar.`
+      return true
     }
   }
-
-  utter.onerror = () => {
-    hablando.value = false
-  }
-
-  window.speechSynthesis.speak(utter)
+  return mio === idHabla
 }
 
-function toggleModoLlamada() {
-  modoLlamada.value = !modoLlamada.value
-  if (modoLlamada.value) {
-    // Iniciar llamada continua
-    iniciarEscucha()
+function detenerHabla() {
+  ++idHabla
+  detenerSalidaAudio()
+  textoHablando.value = ''
+}
+
+function precargarFrasesFrecuentes() {
+  if (!estaAutenticado.value) return
+  precargarVoz(frasesSaludo())
+  precargarVoz(FRASE_DIME)
+  precargarVoz(FRASE_ESPERA)
+  precargarVoz(AVISO_DETALLE_CHAT)
+}
+
+/** Botón "Escuchar" de cada respuesta. */
+async function leerMensaje(texto) {
+  limpiarTimers()
+  detenerReconocimiento()
+  const turno = ++turnoVoz
+  estadoVoz.value = 'hablando'
+  const completo = await hablar(texto)
+  if (!completo || turno !== turnoVoz) return
+  if (modoLlamada.value) pasarAEscuchar(0)
+  else volverAReposo()
+}
+
+/* ---------------- Tono de activación ---------------- */
+let ctxAudio = null
+function sonarTono(tipo = 'inicio') {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return
+    ctxAudio = ctxAudio || new AC()
+    if (ctxAudio.state === 'suspended') ctxAudio.resume()
+    const t = ctxAudio.currentTime
+    const osc = ctxAudio.createOscillator()
+    const g = ctxAudio.createGain()
+    osc.type = 'sine'
+    // inicio: sube (te escucho) · fin: baja (te escuché)
+    const [f1, f2, vol] = tipo === 'fin' ? [880, 620, 0.12] : [660, 880, 0.18]
+    osc.frequency.setValueAtTime(f1, t)
+    osc.frequency.setValueAtTime(f2, t + 0.09)
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24)
+    osc.connect(g).connect(ctxAudio.destination)
+    osc.start(t)
+    osc.stop(t + 0.26)
+  } catch {}
+}
+
+/* ---------------- Ciclo de vida de la voz ---------------- */
+function alCambiarVisibilidad() {
+  if (document.visibilityState === 'visible') {
+    reclamarPestana()
+    programarReinicio(300)
   } else {
-    detenerVozTotal()
+    detenerReconocimiento() // pestaña oculta: no se escucha
   }
 }
 
-function detenerVozTotal() {
-  detenerEscucha()
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel()
+function alEnfocarVentana() {
+  if (document.visibilityState === 'visible' && !esPestanaActiva()) {
+    reclamarPestana()
+    programarReinicio(300)
   }
-  hablando.value = false
 }
+
+function alPresionarTecla(e) {
+  if (e.key === 'Escape' && ['escuchando', 'pensando', 'hablando'].includes(estadoVoz.value)) {
+    cancelarConversacion()
+  }
+}
+
+async function verificarPermisoMicrofono() {
+  try {
+    const p = await navigator.permissions?.query({ name: 'microphone' })
+    if (p?.state === 'denied' && vozActiva.value) {
+      apagarVozPorError(`El micrófono está bloqueado para esta página. Permítelo desde el candado de la barra de direcciones para hablar con ${NOMBRE_ASISTENTE}.`)
+    }
+  } catch {}
+}
+
+onMounted(() => {
+  if (soportaSintesis) {
+    cargarVoces()
+    window.speechSynthesis.addEventListener?.('voiceschanged', cargarVoces)
+  }
+  document.addEventListener('visibilitychange', alCambiarVisibilidad)
+  window.addEventListener('keydown', alPresionarTecla)
+  window.addEventListener('focus', alEnfocarVentana)
+  window.addEventListener('storage', alCambiarPestanaActiva)
+  window.addEventListener('beforeunload', soltarPestana)
+  // Esta pestaña pasa a ser la que escucha (la anterior se detiene) y arranca el micrófono.
+  reclamarPestana()
+  programarReinicio(500)
+  if (vozActiva.value) verificarPermisoMicrofono()
+})
+
+onUnmounted(() => {
+  if (soportaSintesis) window.speechSynthesis.removeEventListener?.('voiceschanged', cargarVoces)
+  document.removeEventListener('visibilitychange', alCambiarVisibilidad)
+  window.removeEventListener('keydown', alPresionarTecla)
+  window.removeEventListener('focus', alEnfocarVentana)
+  window.removeEventListener('storage', alCambiarPestanaActiva)
+  window.removeEventListener('beforeunload', soltarPestana)
+  soltarPestana()
+  ++turnoVoz
+  limpiarTimers()
+  clearTimeout(tReinicio)
+  detenerHabla()
+  detenerReconocimiento()
+  try { ctxAudio?.close() } catch {}
+  for (const p of cacheAudio.values()) p.then(url => url && URL.revokeObjectURL(url))
+  cacheAudio.clear()
+})
+
+// Mientras habla o piensa, el micrófono se reanuda para poder interrumpirla.
+watch(estadoVoz, (estado) => {
+  if ((estado === 'hablando' || estado === 'pensando') && !rec) programarReinicio(450)
+})
+
+// Iniciar / detener la escucha según la sesión (login / logout).
+watch(estaAutenticado, (autenticado) => {
+  if (autenticado) {
+    if (estadoVoz.value === 'inactivo') estadoVoz.value = estadoReposo()
+    programarReinicio(500)
+    if (vozActiva.value) setTimeout(precargarFrasesFrecuentes, 1500)
+  } else {
+    ++turnoVoz
+    modoLlamada.value = false
+    dictando.value = false
+    limpiarTimers()
+    detenerHabla()
+    detenerReconocimiento()
+    estadoVoz.value = 'inactivo'
+  }
+}, { immediate: true })
 
 /* ============================================================
    ACCIONES
@@ -651,15 +1568,15 @@ function toggleChat() {
     hayMensajeNuevo.value = false
     nextTick(() => inputRef.value?.focus())
   } else {
-    detenerVozTotal()
-    modoLlamada.value = false
+    if (dictando.value) detenerDictado()
+    if (modoLlamada.value) cancelarConversacion()
   }
 }
 
 function limpiarChat() {
   mensajes.value = []
   errorConexion.value = false
-  detenerVozTotal()
+  if (['escuchando', 'pensando', 'hablando'].includes(estadoVoz.value)) cancelarConversacion()
 }
 
 function usarSugerencia(texto) {
@@ -670,19 +1587,53 @@ function usarSugerencia(texto) {
 async function enviarMensaje() {
   const texto = mensajeActual.value.trim()
   if (!texto || cargando.value) return
+  if (dictando.value) detenerDictado()
 
-  detenerEscucha()
-
-  mensajes.value.push({ rol: 'usuario', texto, hora: horaActual() })
   mensajeActual.value = ''
-  if (inputRef.value) {
-    inputRef.value.style.height = 'auto'
+  textoBaseDictado = ''
+  if (inputRef.value) inputRef.value.style.height = 'auto'
+
+  // En modo llamada, la respuesta a lo escrito también se lee en voz alta.
+  if (modoLlamada.value) {
+    procesarConsulta(texto)
+    return
   }
+  // Órdenes escritas ("describe esta pantalla", "llévame a compras"…) se resuelven al instante.
+  const comando = detectarComando(texto)
+  if (comando && ['describir', 'navegar', 'repetir', 'ayuda'].includes(comando.tipo)) {
+    const local = ejecutarComando(comando)
+    if (local) {
+      registrarIntercambio(texto, local.respuesta)
+      return
+    }
+  }
+  await consultarServidor(texto)
+}
+
+/** Resumen de lo que el usuario ve (se envía como contexto a la IA). */
+function resumenPantallaActual(pregunta) {
+  if (!refiereAPantalla(pregunta)) return '' // menos texto = la IA responde mucho más rápido
+  try { return describirPantalla(document).resumen } catch { return '' }
+}
+
+/**
+ * Envía la consulta al backend, agrega ambos mensajes al historial y
+ * devuelve el texto de la respuesta (nunca lanza error).
+ */
+let controlConsulta = null
+
+async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
+  mensajes.value.push({ rol: 'usuario', texto, hora: horaActual() })
   await scrollAbajo()
 
   cargando.value = true
   errorConexion.value = false
+  let respuesta
+  let mensajeBot = null // se muestra en el chat mientras se va escribiendo
 
+  const control = new AbortController()
+  controlConsulta = control
+  const limite = setTimeout(() => control.abort(), 90000)
   try {
     const res = await fetch('/api/asistente/chat/', {
       method: 'POST',
@@ -690,42 +1641,86 @@ async function enviarMensaje() {
         'Content-Type': 'application/json',
         'Authorization': `Token ${token.value}`,
       },
-      body: JSON.stringify({ mensaje: texto }),
+      body: JSON.stringify({
+        mensaje: texto,
+        modo: voz ? 'voz' : 'texto',
+        pantalla: resumenPantallaActual(texto),
+        stream: true,
+      }),
+      signal: control.signal,
     })
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`)
+    if (res.status === 401) {
+      const e = new Error('sesión expirada')
+      e.sesionExpirada = true
+      throw e
     }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-    const data = await res.json()
-    const respuesta = data.respuesta || 'No obtuve respuesta del servidor.'
-
-    mensajes.value.push({ rol: 'bot', texto: respuesta, hora: horaActual() })
-
-    // Si está en modo llamada, reproducir automáticamente y luego volver a escuchar
-    if (modoLlamada.value) {
-      hablarTexto(respuesta, () => {
-        if (modoLlamada.value) {
-          setTimeout(() => iniciarEscucha(), 600)
+    const tipo = res.headers?.get?.('Content-Type') || ''
+    if (!tipo.includes('ndjson') || !res.body?.getReader) {
+      const data = await res.json()
+      respuesta = data.respuesta || 'No obtuve respuesta del servidor.'
+    } else {
+      // Respuesta por partes: una línea JSON por trozo.
+      const lector = res.body.getReader()
+      const decodificador = new TextDecoder()
+      let pendiente = ''
+      let acumulado = ''
+      let porFrases = ''
+      const procesarLinea = (linea) => {
+        if (!linea.trim()) return
+        const d = JSON.parse(linea)
+        if (d.delta) {
+          acumulado += d.delta
+          if (!mensajeBot) {
+            cargando.value = false
+            mensajes.value.push({ rol: 'bot', texto: '', hora: horaActual() })
+            mensajeBot = mensajes.value[mensajes.value.length - 1]
+          }
+          mensajeBot.texto = acumulado
+          scrollAbajo()
+          if (alFrase) {
+            const r = extraerFrases(porFrases + d.delta)
+            porFrases = r.resto
+            r.frases.forEach(alFrase)
+          }
         }
-      })
+        if (d.fin && d.respuesta) acumulado = d.respuesta
+      }
+      for (;;) {
+        const { value, done } = await lector.read()
+        if (done) break
+        pendiente += decodificador.decode(value, { stream: true })
+        const lineas = pendiente.split('\n')
+        pendiente = lineas.pop()
+        lineas.forEach(procesarLinea)
+      }
+      procesarLinea(pendiente)
+      if (alFrase && porFrases.trim()) extraerFrases(porFrases, true).frases.forEach(alFrase)
+      respuesta = acumulado.trim() || 'No obtuve respuesta del servidor.'
     }
-
-    if (!abierto.value) {
-      hayMensajeNuevo.value = true
-    }
-
   } catch (err) {
-    errorConexion.value = true
-    mensajes.value.push({
-      rol: 'bot',
-      texto: 'En este momento no puedo conectarme con el asistente IA. Por favor intenta en unos minutos.',
-      hora: horaActual(),
-    })
+    if (control.porUsuario) {
+      respuesta = mensajeBot?.texto || '' // cancelada por el usuario
+    } else if (err?.sesionExpirada) {
+      respuesta = 'Qué pena, tu sesión expiró. Vuelve a iniciar sesión y seguimos conversando.'
+    } else {
+      errorConexion.value = true
+      respuesta = mensajeBot?.texto
+        ? mensajeBot.texto
+        : 'Qué pena, en este momento no me puedo conectar con el servidor. Intenta de nuevo en unos minuticos, por favor.'
+    }
   } finally {
+    clearTimeout(limite)
     cargando.value = false
-    await scrollAbajo()
+    if (controlConsulta === control) controlConsulta = null
   }
+
+  if (mensajeBot) mensajeBot.texto = respuesta || mensajeBot.texto
+  else if (respuesta) mensajes.value.push({ rol: 'bot', texto: respuesta, hora: horaActual() })
+  if (!abierto.value) hayMensajeNuevo.value = true
+  await scrollAbajo()
+  return respuesta
 }
 </script>
 
@@ -1338,5 +2333,242 @@ async function enviarMensaje() {
 .sia-slide-leave-to {
   opacity: 0;
   transform: translateY(16px) scale(0.97);
+}
+
+/* ============================================================
+   VOZ — "OYE TATI"
+============================================================ */
+.sia-asistente-raiz {
+  display: contents;
+}
+
+/* FAB en espera (escucha en segundo plano) */
+.sia-fab--espera {
+  box-shadow: 0 6px 22px rgba(12, 42, 79, 0.45), 0 0 0 3px rgba(255, 199, 44, 0.35);
+}
+
+/* FAB durante la conversación por voz */
+.sia-fab--voz {
+  animation: sia-anillo 1.4s ease-out infinite;
+}
+
+@keyframes sia-anillo {
+  0%   { box-shadow: 0 6px 22px rgba(12, 42, 79, 0.45), 0 0 0 0 rgba(255, 199, 44, 0.65); }
+  100% { box-shadow: 0 6px 22px rgba(12, 42, 79, 0.45), 0 0 0 16px rgba(255, 199, 44, 0); }
+}
+
+.sia-fab__oido {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFC72C;
+  color: #0C2A4F;
+  border: 2px solid #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Burbuja flotante con el chat cerrado */
+.sia-burbuja-voz {
+  position: fixed;
+  right: 28px;
+  bottom: 98px;
+  z-index: 999998;
+  width: min(330px, calc(100vw - 32px));
+  background: linear-gradient(135deg, #0C2A4F 0%, #123A6B 100%);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 199, 44, 0.45);
+  border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(12, 42, 79, 0.4);
+}
+
+.sia-burbuja-voz__cabecera {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.sia-burbuja-voz__cabecera strong {
+  flex: 1;
+  color: #FFC72C;
+  font-weight: 700;
+}
+
+.sia-burbuja-voz__cerrar {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: #FFFFFF;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sia-burbuja-voz__cerrar:hover {
+  background: rgba(255, 199, 44, 0.3);
+}
+
+.sia-burbuja-voz__texto {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #E8EEF6;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* Ondas animadas */
+.sia-burbuja-voz__onda {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+}
+
+.sia-burbuja-voz__onda i {
+  display: block;
+  width: 3px;
+  height: 6px;
+  border-radius: 2px;
+  background: #FFC72C;
+}
+
+.sia-burbuja-voz--escuchando .sia-burbuja-voz__onda i,
+.sia-burbuja-voz--hablando .sia-burbuja-voz__onda i {
+  animation: sia-onda 0.9s ease-in-out infinite;
+}
+
+.sia-burbuja-voz__onda i:nth-child(2) { animation-delay: 0.15s; }
+.sia-burbuja-voz__onda i:nth-child(3) { animation-delay: 0.3s; }
+.sia-burbuja-voz__onda i:nth-child(4) { animation-delay: 0.45s; }
+
+.sia-burbuja-voz--pensando .sia-burbuja-voz__onda i {
+  animation: sia-parpadeo 1.2s ease-in-out infinite;
+}
+
+@keyframes sia-onda {
+  0%, 100% { height: 5px; }
+  50%      { height: 18px; }
+}
+
+@keyframes sia-parpadeo {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 1; }
+}
+
+/* Aviso de voz flotante */
+.sia-aviso-voz {
+  position: fixed;
+  right: 28px;
+  bottom: 98px;
+  z-index: 999997;
+  width: min(330px, calc(100vw - 32px));
+  background: #FFF3E0;
+  color: #8A3A00;
+  border: 1px solid #FFB74D;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.sia-aviso-voz span { flex: 1; }
+
+.sia-aviso-voz button,
+.sia-error-banner--voz button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.sia-error-banner--voz {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.sia-error-banner--voz span { flex: 1; }
+
+/* Interruptor activo en la cabecera */
+.sia-ventana__btn-accion--activo {
+  background: #FFC72C;
+  border-color: #FFC72C;
+  color: #0C2A4F;
+}
+
+.sia-ventana__btn-accion--activo:hover {
+  background: #FFD760;
+  color: #0C2A4F;
+}
+
+.sia-bienvenida__link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #123A6B;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sia-voz-activo-banner__texto {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sia-voz-activo-banner__btn {
+  background: #0C2A4F;
+  color: #FFC72C;
+  border: none;
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sia-fade-enter-active,
+.sia-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.sia-fade-enter-from,
+.sia-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (max-width: 480px) {
+  .sia-burbuja-voz,
+  .sia-aviso-voz {
+    right: 16px;
+    bottom: 90px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sia-fab--voz,
+  .sia-burbuja-voz__onda i {
+    animation: none !important;
+  }
 }
 </style>

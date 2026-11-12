@@ -259,7 +259,7 @@ class FlujoMantenimientoTests(APITestCase):
                 "producto_requerido": "Compresor 12000 BTU",
                 "especificacion_producto": "Marca X",
                 "cantidad_requerida": 1,
-                "costo_estimado": "4500",
+                "costo_estimado": "90",
             },
             format="multipart",
         )
@@ -327,7 +327,7 @@ class FlujoMantenimientoTests(APITestCase):
             f"/api/mantenimiento/requerimientos/{pk}/solicitar-requerimiento/",
             {
             "informe_compra": SimpleUploadedFile("informe.pdf", b"informe con cuadros"),
-            "cotizacion_archivo": SimpleUploadedFile("cotizacion.pdf", b"cotizacion"),"producto_requerido": "Ventilador", "cantidad_requerida": 1, "costo_estimado": "300"},
+            "cotizacion_archivo": SimpleUploadedFile("cotizacion.pdf", b"cotizacion"),"producto_requerido": "Ventilador", "cantidad_requerida": 1, "costo_estimado": "75"},
             format="multipart",
         )
 

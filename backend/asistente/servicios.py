@@ -15,13 +15,46 @@ estructuradas específicamente según el rol activo del usuario:
 - SOLICITANTE / JEFE_CARRERA (Usuarios Solicitantes)
 """
 
+import json
 import os
 import re
+import sys
+import threading
+
 import requests
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-OLLAMA_TIMEOUT = 3.0
+# sigta-ai = modelo institucional creado desde el Modelfile del proyecto (FROM llama3.2:3b).
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "sigta-ai")
+
+
+def _float_env(nombre: str, defecto: float) -> float:
+    try:
+        return float(os.getenv(nombre, defecto))
+    except (TypeError, ValueError):
+        return defecto
+
+
+# Si Ollama no está corriendo, la conexión se rechaza al instante y responde el
+# motor experto; el límite solo aplica cuando Ollama sí está generando.
+OLLAMA_TIMEOUT = _float_env("OLLAMA_TIMEOUT", 20.0)
+# Por voz el usuario espera en silencio: límite más corto antes de usar el respaldo.
+OLLAMA_TIMEOUT_VOZ = _float_env("OLLAMA_TIMEOUT_VOZ", 8.0)
+OLLAMA_MAX_TOKENS_VOZ = int(_float_env("OLLAMA_MAX_TOKENS_VOZ", 180))
+# Respuesta por partes: segundos máximos esperando la PRIMERA palabra (si no llega, responde el respaldo).
+OLLAMA_TIMEOUT_PRIMER_TOKEN = _float_env("OLLAMA_TIMEOUT_PRIMER_TOKEN", 15.0)
+OLLAMA_TIMEOUT_PRIMER_TOKEN_VOZ = _float_env("OLLAMA_TIMEOUT_PRIMER_TOKEN_VOZ", 15.0)
+# Tiempo que Ollama mantiene el modelo en memoria entre preguntas (evita recargarlo).
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "2h")
+
+INSTRUCCION_IDENTIDAD = (
+    "=== IDENTIDAD ===\n"
+    "Te llamas Tati, la asistente virtual del Sistema Integrado Administrativo (SIA) "
+    "de la Escuela Militar de Ingeniería. Eres colombiana: hablas español con calidez, cercanía "
+    "y expresiones colombianas naturales como «con mucho gusto», «claro que sí», «listo», "
+    "«qué pena», «un momentico» o «¿qué más?», sin exagerar y siempre con tono profesional. "
+    "Tratas al usuario de tú."
+)
 
 
 def _extraer_pregunta_del_prompt(prompt: str) -> str:
@@ -511,11 +544,15 @@ def _generar_respuesta_experta(prompt: str) -> str:
     )
 
 
-def consultar_asistente(prompt: str) -> str:
+def consultar_asistente(prompt: str, prompt_respaldo: str | None = None, voz: bool = False) -> str:
     """
-    Punto de entrada principal. Intenta Ollama localmente con timeout corto (3s);
+    Punto de entrada principal. Intenta Ollama localmente (límite OLLAMA_TIMEOUT);
     si no responde o no está disponible, el motor experto SIA responde con máxima
     calidad, precisión y apego al Modelfile institucional.
+
+    prompt          → enviado a la IA (puede incluir identidad, pantalla y estilo de voz).
+    prompt_respaldo → usado por el motor experto (solo contexto + pregunta).
+    voz             → respuesta corta pensada para leerse en voz alta.
     """
     try:
         url = f"{OLLAMA_BASE_URL}/api/generate"
@@ -523,8 +560,11 @@ def consultar_asistente(prompt: str) -> str:
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": OLLAMA_KEEP_ALIVE,
         }
-        res = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
+        if voz:
+            payload["options"] = {"num_predict": OLLAMA_MAX_TOKENS_VOZ}
+        res = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT_VOZ if voz else OLLAMA_TIMEOUT)
         if res.status_code == 200:
             texto = res.json().get("response", "").strip()
             if texto:
@@ -532,8 +572,113 @@ def consultar_asistente(prompt: str) -> str:
     except Exception:
         pass
 
-    return _generar_respuesta_experta(prompt)
+    return _generar_respuesta_experta(prompt_respaldo or prompt)
+
+
+def _normalizar_marca(texto: str) -> str:
+    return texto.replace("SIGTA", "SIA").replace("sigta", "sia")
+
+
+def consultar_asistente_stream(prompt: str, prompt_respaldo: str | None = None, voz: bool = False):
+    """
+    Igual que consultar_asistente, pero entrega la respuesta por partes a medida
+    que Ollama la genera (el frontend empieza a mostrarla y a leerla en voz alta
+    sin esperar el final). Si la primera palabra no llega en
+    OLLAMA_TIMEOUT_PRIMER_TOKEN segundos, entrega la respuesta del motor experto.
+    """
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": True,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
+    }
+    if voz:
+        payload["options"] = {"num_predict": OLLAMA_MAX_TOKENS_VOZ}
+
+    entregado = False
+    pendiente = ""  # retiene un posible "SIG" partido entre dos trozos
+    try:
+        with requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json=payload,
+            stream=True,
+            timeout=(3, OLLAMA_TIMEOUT_PRIMER_TOKEN_VOZ if voz else OLLAMA_TIMEOUT_PRIMER_TOKEN),
+        ) as res:
+            if res.status_code == 200:
+                for linea in res.iter_lines():
+                    if not linea:
+                        continue
+                    datos = json.loads(linea)
+                    trozo = datos.get("response", "")
+                    if trozo:
+                        texto = _normalizar_marca(pendiente + trozo)
+                        corte = max(texto.rfind("SIG"), texto.rfind("sig"))
+                        if corte != -1 and corte >= len(texto) - 4:
+                            texto, pendiente = texto[:corte], texto[corte:]
+                        else:
+                            pendiente = ""
+                        if texto:
+                            entregado = True
+                            yield texto
+                    if datos.get("done"):
+                        break
+    except Exception:
+        pass  # Ollama apagado, lento o cortado: se completa con lo que haya o con el respaldo
+
+    if pendiente:
+        entregado = True
+        yield _normalizar_marca(pendiente)
+    if not entregado:
+        yield _generar_respuesta_experta(prompt_respaldo or prompt)
+
+
+# ==============================================================
+# PRECALENTAMIENTO DEL MODELO
+# ==============================================================
+# La primera consulta a sigta-ai procesa ~3.700 tokens de instrucciones del
+# Modelfile (más de un minuto en CPU). Al arrancar el servidor se hace una
+# consulta mínima en segundo plano: Ollama carga el modelo y guarda ese
+# procesamiento, y las preguntas reales tardan pocos segundos.
+
+
+def _debe_precalentar(argv=None, entorno=None) -> bool:
+    argv = sys.argv if argv is None else argv
+    entorno = os.environ if entorno is None else entorno
+    if entorno.get("OLLAMA_PRECALENTAR", "1") != "1":
+        return False
+    if any(os.path.basename(a).startswith("manage") for a in argv[:1]):
+        comando = argv[1] if len(argv) > 1 else ""
+        if comando != "runserver":
+            return False  # migraciones, pruebas, shell, comandos propios…
+        # runserver con recarga automática: solo el proceso hijo (RUN_MAIN) sirve peticiones
+        return "--noreload" in argv or entorno.get("RUN_MAIN") == "true"
+    if any("pytest" in a or "unittest" in a for a in argv[:2]):
+        return False
+    return True  # gunicorn / uwsgi / daphne
+
+
+def _precalentar():
+    try:
+        requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": f"{INSTRUCCION_IDENTIDAD}\n\nResponde solo con la palabra: listo",
+                "stream": False,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "options": {"num_predict": 1},
+            },
+            timeout=600,
+        )
+    except Exception:
+        pass  # sin Ollama el sistema funciona con el motor experto
+
+
+def precalentar_en_segundo_plano():
+    if _debe_precalentar():
+        threading.Thread(target=_precalentar, name="precalentar-ollama", daemon=True).start()
 
 
 # Alias de compatibilidad con views.py
 consultar_ollama = consultar_asistente
+consultar_ollama_stream = consultar_asistente_stream
