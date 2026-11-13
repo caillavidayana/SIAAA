@@ -48,6 +48,9 @@
          BOTÓN FLOTANTE (FAB)
     =================================================== -->
     <button
+      ref="fabRef"
+      :aria-expanded="abierto"
+      aria-controls="sia-chat"
       class="sia-fab"
       :class="{
         'sia-fab--abierto': abierto,
@@ -79,12 +82,14 @@
     </button>
 
 
+    <!-- MODIFICACION3: diálogo identificado, controles etiquetados y foco de retorno. -->
     <!-- ===================================================
          VENTANA DE CHAT
     =================================================== -->
     <transition name="sia-slide">
       <div
         v-if="abierto"
+        id="sia-chat"
         class="sia-ventana"
         :class="{ 'sia-ventana--expandida': expandido }"
         role="dialog"
@@ -106,12 +111,12 @@
               </div>
               <span class="sia-ventana__estado">
                 <span class="sia-ventana__estado-dot"></span>
-                {{ vozActiva ? `Di «Oye ${NOMBRE_ASISTENTE}» para hablarme` : 'En línea · Soporte Institucional' }}
+                {{ vozActiva ? `Di «Oye ${NOMBRE_ASISTENTE}» para hablarme` : 'Soporte institucional · EMI' }}
               </span>
             </div>
           </div>
 
-          <!-- Acciones de cabecera -->
+          <!-- MODIFICACION1: cabecera organizada sin alterar los controles de voz. -->
           <div class="sia-ventana__header-actions">
             <!-- Interruptor de activación por voz ("Oye Tati") -->
             <button
@@ -119,6 +124,7 @@
               :class="{ 'sia-ventana__btn-accion--activo': vozActiva }"
               @click="toggleVozActiva"
               :aria-pressed="vozActiva"
+              :aria-label="vozActiva ? `Apagar activación por voz` : `Encender activación por voz de Tati`"
               :title="vozActiva ? `Activación por voz ENCENDIDA (clic para apagar)` : `Encender activación por voz: di «Oye ${NOMBRE_ASISTENTE}»`"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
@@ -130,6 +136,7 @@
             <button
               class="sia-ventana__btn-accion"
               @click="expandido = !expandido"
+              :aria-label="expandido ? 'Reducir ventana' : 'Expandir ventana'"
               :title="expandido ? 'Reducir ventana' : 'Expandir ventana para mayor comodidad'"
             >
               <svg v-if="!expandido" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
@@ -141,11 +148,13 @@
             </button>
 
             <!-- Botón Nueva Conversación -->
-            <button class="sia-ventana__btn-accion" @click="limpiarChat" title="Reiniciar chat">
+            <button class="sia-ventana__btn-accion" @click="limpiarChat" :disabled="cargando" aria-label="Reiniciar chat" title="Reiniciar chat">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                 <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
               </svg>
             </button>
+            <button type="button" class="sia-ventana__btn-accion" @click="toggleChat" aria-label="Minimizar chat" title="Minimizar chat">−</button>
+            <button type="button" class="sia-ventana__btn-accion" @click="cerrarChat" aria-label="Cerrar chat" title="Cerrar chat">×</button>
           </div>
         </div>
 
@@ -159,8 +168,10 @@
           <button class="sia-banner-llamada__btn-salir" @click="toggleModoLlamada" title="Salir de llamada">Finalizar</button>
         </div>
 
+        <!-- MODIFICACION1: estado de la solicitud separado del flujo de voz de Tati. -->
+        <p class="sia-consulta-estado" role="status" aria-live="polite" aria-atomic="true">{{ estadoConsulta }}</p>
         <!-- ÁREA DE MENSAJES -->
-        <div class="sia-ventana__mensajes" ref="contenedorMensajes">
+        <div class="sia-ventana__mensajes" ref="contenedorMensajes" role="region" aria-label="Historial de conversación" tabindex="0">
 
           <!-- Bienvenida -->
           <div v-if="mensajes.length === 0" class="sia-bienvenida">
@@ -205,6 +216,8 @@
             <div class="sia-mensaje__burbuja">
               <span class="sia-mensaje__texto" v-html="formatearTexto(msg.texto)"></span>
 
+              <!-- MODIFICACION2: texto y tarjetas conviven; nunca se analiza texto libre. -->
+              <AsistenteResultados v-if="msg.resultados?.length" :resultados="msg.resultados" />
               <div class="sia-mensaje__footer">
                 <!-- Botón escuchar voz para respuestas del asistente -->
                 <button
@@ -223,10 +236,10 @@
             </div>
           </div>
 
-          <!-- Indicador escribiendo -->
-          <div v-if="cargando" class="sia-mensaje sia-mensaje--bot">
+          <!-- MODIFICACION1: tres puntos hasta recibir contenido; fin/error limpian la espera. -->
+          <div v-if="cargando && !recibiendo" class="sia-mensaje sia-mensaje--bot">
             <div class="sia-mensaje__burbuja sia-mensaje__burbuja--typing">
-              <div class="sia-typing">
+              <div class="sia-typing" aria-hidden="true">
                 <span></span><span></span><span></span>
               </div>
             </div>
@@ -256,13 +269,15 @@
         </div>
 
         <!-- Banner de Error -->
-        <div v-if="errorConexion" class="sia-error-banner">
+        <div v-if="errorConexion" class="sia-error-banner" role="alert">
           ⚠️ No se pudo conectar con el servidor. Intenta nuevamente en unos segundos.
         </div>
 
-        <!-- ÁREA DE INPUT CON BOTÓN DE MICRÓFONO -->
+        <!-- MODIFICACION3: entrada etiquetada y estados accesibles de los controles. -->
         <div class="sia-ventana__input-area">
           <textarea
+            aria-label="Consulta para Tati"
+            aria-describedby="sia-chat-ayuda"
             ref="inputRef"
             v-model="mensajeActual"
             class="sia-ventana__input"
@@ -280,6 +295,8 @@
             class="sia-ventana__btn-voz-continua"
             :class="{ 'sia-ventana__btn-voz-continua--activo': modoLlamada }"
             @click="toggleModoLlamada"
+            :aria-pressed="modoLlamada"
+            :aria-label="modoLlamada ? 'Finalizar conversación por voz' : 'Iniciar conversación por voz'"
             :title="modoLlamada ? 'Conversación por voz ACTIVA (clic para terminar)' : `Conversar por voz con ${NOMBRE_ASISTENTE} sin decir su nombre cada vez`"
           >
             <!-- Ícono de persona hablando -->
@@ -294,6 +311,8 @@
             class="sia-ventana__btn-mic"
             :class="{ 'sia-ventana__btn-mic--grabando': dictando }"
             @click="toggleGrabacionManual"
+            :aria-pressed="dictando"
+            :aria-label="dictando ? 'Detener dictado' : 'Dictar consulta por voz'"
             :title="dictando ? 'Detener dictado' : 'Dictar consulta por voz (Micrófono)'"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="19" height="19">
@@ -307,7 +326,7 @@
             class="sia-ventana__btn-enviar"
             :disabled="!mensajeActual.trim() || cargando"
             @click="enviarMensaje"
-            title="Enviar consulta (Enter)"
+            aria-label="Enviar consulta" title="Enviar consulta (Enter)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -315,7 +334,7 @@
           </button>
         </div>
 
-        <div class="sia-ventana__subhint">
+        <div id="sia-chat-ayuda" class="sia-ventana__subhint">
           <span>{{ vozActiva ? `🎙️ Di «Oye ${NOMBRE_ASISTENTE}» · Esc para cancelar · Enter para enviar` : '🎙️ Presiona el micrófono para dictar · Enter para enviar' }}</span>
         </div>
 
@@ -328,6 +347,9 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+// MODIFICACION2: tarjetas solo para registros estructurados explícitos.
+import AsistenteResultados from './AsistenteResultados.vue'
+import { normalizarResultados } from '../utils/resultadosAsistente.js'
 import {
   NOMBRE_ASISTENTE, detectarPalabraActivacion, restoOriginal, detectarComando,
   limpiarParaVoz, elegirVoz, frasesParaVoz, describirPantalla, dividirEnFrases, extraerFrases,
@@ -344,6 +366,9 @@ const abierto         = ref(false)
 const expandido       = ref(false)
 const mensajeActual   = ref('')
 const mensajes        = ref([])
+// MODIFICACION1: mantener ocupada la solicitud también durante streaming.
+const recibiendo = ref(false)
+const estadoConsulta = ref('Lista para tu consulta')
 const cargando        = ref(false)
 const errorConexion   = ref(false)
 const hayMensajeNuevo = ref(false)
@@ -351,6 +376,8 @@ const modoLlamada     = ref(false)
 
 const contenedorMensajes = ref(null)
 const inputRef           = ref(null)
+// MODIFICACION3: devolver el foco al botón que abre el chat.
+const fabRef = ref(null)
 
 /* Token reactivo y usuario */
 const rawToken = ref(localStorage.getItem('sigta_token') || '')
@@ -1562,6 +1589,11 @@ watch(estaAutenticado, (autenticado) => {
 /* ============================================================
    ACCIONES
 ============================================================ */
+// MODIFICACION3: cerrar cancela la conversación activa; minimizar conserva el historial.
+function cerrarChat() {
+  cancelarConversacion()
+  if (abierto.value) toggleChat()
+}
 function toggleChat() {
   abierto.value = !abierto.value
   if (abierto.value) {
@@ -1570,6 +1602,7 @@ function toggleChat() {
   } else {
     if (dictando.value) detenerDictado()
     if (modoLlamada.value) cancelarConversacion()
+    nextTick(() => fabRef.value?.focus())
   }
 }
 
@@ -1623,12 +1656,19 @@ function resumenPantallaActual(pregunta) {
 let controlConsulta = null
 
 async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
+  // MODIFICACION1: bloquear envíos duplicados antes del primer await.
+  if (cargando.value) return ''
+  cargando.value = true
+  recibiendo.value = false
+  estadoConsulta.value = 'Consulta enviada · Esperando respuesta'
   mensajes.value.push({ rol: 'usuario', texto, hora: horaActual() })
   await scrollAbajo()
 
   cargando.value = true
   errorConexion.value = false
   let respuesta
+  // MODIFICACION2: metadatos opcionales, sin modificar la petición ni el contrato actual.
+  let resultados = []
   let mensajeBot = null // se muestra en el chat mientras se va escribiendo
 
   const control = new AbortController()
@@ -1660,6 +1700,7 @@ async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
     if (!tipo.includes('ndjson') || !res.body?.getReader) {
       const data = await res.json()
       respuesta = data.respuesta || 'No obtuve respuesta del servidor.'
+      resultados = normalizarResultados(data)
     } else {
       // Respuesta por partes: una línea JSON por trozo.
       const lector = res.body.getReader()
@@ -1673,7 +1714,9 @@ async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
         if (d.delta) {
           acumulado += d.delta
           if (!mensajeBot) {
-            cargando.value = false
+            // MODIFICACION1: el streaming sigue ocupado hasta finally.
+            recibiendo.value = true
+            estadoConsulta.value = 'Recibiendo respuesta…'
             mensajes.value.push({ rol: 'bot', texto: '', hora: horaActual() })
             mensajeBot = mensajes.value[mensajes.value.length - 1]
           }
@@ -1685,7 +1728,11 @@ async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
             r.frases.forEach(alFrase)
           }
         }
-        if (d.fin && d.respuesta) acumulado = d.respuesta
+        // MODIFICACION2: solo el evento final puede aportar registros estructurados.
+        if (d.fin) {
+          if (d.respuesta) acumulado = d.respuesta
+          resultados = normalizarResultados(d)
+        }
       }
       for (;;) {
         const { value, done } = await lector.read()
@@ -1701,11 +1748,14 @@ async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
     }
   } catch (err) {
     if (control.porUsuario) {
+      estadoConsulta.value = 'Consulta cancelada'
       respuesta = mensajeBot?.texto || '' // cancelada por el usuario
     } else if (err?.sesionExpirada) {
+      estadoConsulta.value = 'Sesión expirada · Inicia sesión nuevamente'
       respuesta = 'Qué pena, tu sesión expiró. Vuelve a iniciar sesión y seguimos conversando.'
     } else {
       errorConexion.value = true
+      estadoConsulta.value = 'Error al recibir la respuesta · Puedes volver a intentarlo'
       respuesta = mensajeBot?.texto
         ? mensajeBot.texto
         : 'Qué pena, en este momento no me puedo conectar con el servidor. Intenta de nuevo en unos minuticos, por favor.'
@@ -1713,11 +1763,16 @@ async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
   } finally {
     clearTimeout(limite)
     cargando.value = false
+    recibiendo.value = false
+    if (estadoConsulta.value.startsWith('Consulta enviada') || estadoConsulta.value.startsWith('Recibiendo')) estadoConsulta.value = 'Respuesta recibida'
     if (controlConsulta === control) controlConsulta = null
   }
 
-  if (mensajeBot) mensajeBot.texto = respuesta || mensajeBot.texto
-  else if (respuesta) mensajes.value.push({ rol: 'bot', texto: respuesta, hora: horaActual() })
+  // MODIFICACION2: conservar el texto original junto a sus datos explícitos.
+  if (mensajeBot) {
+    mensajeBot.texto = respuesta || mensajeBot.texto
+    mensajeBot.resultados = resultados
+  } else if (respuesta) mensajes.value.push({ rol: 'bot', texto: respuesta, resultados, hora: horaActual() })
   if (!abierto.value) hayMensajeNuevo.value = true
   await scrollAbajo()
   return respuesta
@@ -2571,4 +2626,52 @@ async function consultarServidor(texto, { voz = false, alFrase = null } = {}) {
     animation: none !important;
   }
 }
+
+/* MODIFICACION1: jerarquía institucional, espacio y lectura de mensajes largos. */
+.sia-ventana { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; width: min(440px, calc(100vw - 32px)); height: min(680px, calc(100dvh - 120px)); max-height: calc(100dvh - 120px); border-radius: 18px; }
+.sia-ventana--expandida { width: min(680px, calc(100vw - 32px)); height: min(800px, calc(100dvh - 120px)); }
+.sia-ventana__header { padding: 16px; gap: 12px; flex-wrap: wrap; }
+.sia-ventana__header-info, .sia-ventana__header-info > div:last-child { min-width: 0; }
+.sia-ventana__titulo-box { flex-wrap: wrap; }
+.sia-ventana__nombre { font-size: 15px; line-height: 1.4; }
+.sia-ventana__estado { line-height: 1.5; white-space: normal; }
+.sia-ventana__header-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
+.sia-ventana__mensajes { min-height: 0; padding: 18px 16px; overscroll-behavior: contain; }
+.sia-mensaje { min-width: 0; max-width: 94%; }
+.sia-mensaje__burbuja { min-width: 0; max-width: 100%; padding: 12px 14px; border: 1px solid #d7e3ef; box-shadow: 0 2px 5px #0c2a4f08; }
+.sia-mensaje__texto { display: block; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 14px; line-height: 1.65; }
+.sia-consulta-estado { flex-shrink: 0; margin: 0; padding: 9px 16px; background: #edf3fa; color: #274764; font-size: 12px; line-height: 1.5; border-bottom: 1px solid #d7e3ef; }
+.sia-mensaje__burbuja--typing { min-height: 44px; display: flex; align-items: center; }
+
+/* MODIFICACION3: foco visible, controles cómodos y ventana sin desbordamiento. */
+.sia-ventana *, .sia-ventana *::before, .sia-ventana *::after { box-sizing: border-box; }
+.sia-ventana button:focus-visible, .sia-ventana textarea:focus-visible, .sia-fab:focus-visible,
+.sia-burbuja-voz button:focus-visible, .sia-aviso-voz button:focus-visible,
+.sia-ventana__mensajes:focus-visible { outline: 3px solid #b98f00; outline-offset: 3px; }
+.sia-ventana__header button:focus-visible { outline-color: #ffc72c; outline-offset: -3px; }
+.sia-ventana__btn-accion { width: 36px; height: 36px; flex-shrink: 0; font-size: 22px; }
+.sia-ventana button:disabled { cursor: not-allowed; opacity: .55; }
+.sia-ventana__input-area { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 40px); align-items: end; gap: 6px; padding: 12px; }
+.sia-ventana__input { min-width: 0; width: 100%; max-height: 120px; font-size: 14px; line-height: 1.5; }
+.sia-ventana__input-area button { width: 40px; height: 40px; margin: 0; }
+.sia-ventana__subhint { padding: 8px 12px; line-height: 1.5; color: #4c6076; }
+.sia-bienvenida__texto, .sia-bienvenida__nota-voz { line-height: 1.6; }
+.sia-sugerencia { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.sia-error-banner, .sia-voz-activo-banner, .sia-banner-llamada { flex-shrink: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .sia-ventana, .sia-ventana--expandida { right: 12px; bottom: 88px; width: calc(100vw - 24px); height: min(680px, calc(100dvh - 104px)); max-height: calc(100dvh - 104px); }
+  .sia-ventana__header { padding: 12px; gap: 6px; }
+  .sia-ventana__input-area { grid-template-columns: minmax(0, 1fr) repeat(3, 44px); }
+  .sia-ventana__btn-voz-continua { grid-column: 2; }
+  .sia-ventana__input { grid-column: 1 / -1; }
+  .sia-ventana__input-area button, .sia-ventana__btn-accion { width: 44px; height: 44px; }
+  .sia-fab { right: 16px !important; bottom: 16px !important; }
+  .sia-burbuja-voz, .sia-aviso-voz { max-width: calc(100vw - 24px); right: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sia-ventana, .sia-fab, .sia-slide-enter-active, .sia-slide-leave-active { transition: none; }
+  .sia-typing span, .sia-fab__badge, .sia-voz-dot, .sia-banner-llamada__pulso { animation: none; }
+  .sia-ventana__mensajes { scroll-behavior: auto; }
+}
+
 </style>
